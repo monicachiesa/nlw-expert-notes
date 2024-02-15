@@ -5,9 +5,27 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 
+interface Note {
+  id: string,
+  date: Date,
+  content: string
+}
+
 export function App() {
   const [shouldShowOnBoarding, setShouldShowOnBoarding] = useState(true);
   const [content, setContent] = useState('')
+  const [search, setSearch] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+
+  const [notes, setNotes] = useState<Note[]>(() => {
+    const notesOnLocalStorage = localStorage.getItem('notes')
+    if (notesOnLocalStorage) {
+      return JSON.parse(notesOnLocalStorage)
+    }
+
+
+    return []
+  })
 
   const note = {
     date: new Date(),
@@ -25,14 +43,81 @@ export function App() {
       setShouldShowOnBoarding(true)
     }
 
-    toast.success('Nota criada com sucesso')
   }
 
   function handleSaveNote(event: FormEvent) {
     event.preventDefault();
 
+    if(content == '') {
+      return
+    }
 
+    onNoteCreated(content)
+    setContent('')
+    setShouldShowOnBoarding(true)
+
+    toast.success('Nota criada com sucesso')
   }
+
+  function onNoteCreated(content: string) {
+    const newNote = {
+      id: crypto.randomUUID(),
+      date: new Date(),
+      content
+    }
+
+
+    //assim ordena e joga a nova nota lá pra frente no array de notas
+    const notesArray = [newNote, ...notes]
+    setNotes(notesArray);
+
+    //salva no localStorage
+    localStorage.setItem('notes', JSON.stringify(notesArray))
+  }
+
+
+  function handleSearch(event: ChangeEvent<HTMLInputElement>) {
+    const query = event.target.value;
+
+    setSearch(query)
+  }
+
+  function handleStoreRecording() {
+    setIsRecording(true)
+    setShouldShowOnBoarding(false)
+
+    const isSpeechRecognitionAPIAvailable = 'SpeechRecognition' in window || 
+    'webkitSpeechRecognition' in window 
+
+    if(!isSpeechRecognitionAPIAvailable) {
+      alert('Infelizmente o seu navegador não suporta a a API de gravação')
+      return
+    }
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
+    const speechRecognition = new SpeechRecognitionAPI();
+
+    speechRecognition.lang = 'pt-BR'
+    speechRecognition.continuous = true; //não para de gravar até mandar parar
+    speechRecognition.maxAlternatives = 1;
+    speechRecognition.interimResults = true; //traz os resultados mesmo antes de parar de falar
+
+    speechRecognition.onresult = (event) => {
+      console.log('event', event)
+    }
+
+    speechRecognition.onerror = (event) => {
+      console.log('event', event)
+    }
+
+    speechRecognition.start(); //começa a gravação
+  }
+
+  function handleStopRecording() {
+    setIsRecording(false)
+  }
+
+  const filteredNotes = search != '' ? notes.filter(note => note.content.toLocaleLowerCase().includes(search.toLocaleLowerCase())) : notes
 
   return (
 
@@ -42,6 +127,7 @@ export function App() {
         <input
           placeholder='Busque em suas notas'
           type="text"
+          onChange={handleSearch}
           className='w-full bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-slate-500'
         />
       </form>
@@ -68,11 +154,14 @@ export function App() {
                   {shouldShowOnBoarding ?
                     <p className='text-sm leading-6 text-slate-400'>
                       Comece <button
+                        type="button"
+                        onClick={handleStoreRecording}
                         className='font-medium text-lime-400 hover:underline'
                       >gravando uma nota&nbsp;
                       </button>
                       em áudio ou se preferir &nbsp;
                       <button
+                        type="button"
                         onClick={handleStartEditor}
                         className='font-medium text-lime-400 hover:underline'
                       >utilize apenas texto</button>.
@@ -80,21 +169,35 @@ export function App() {
                     :
                     <textarea
                       autoFocus
+                      value={content}
                       onChange={handleContentChanged}
                       className='text-sm leading-6 text-slate-400 bg-transparent resize-none flex-1 outline-none' />
                   }
                 </div>
-                <button
-                  type="submit"
-                  className='w-full bg-lime-400 py-4 text-center hover:bg-lime-500 text-sm font-medium text-lime-950 outline-none'>
-                  Salvar nota
-                </button>
+                {isRecording ?
+                  <button
+                    type="button"
+                    onClick={handleStopRecording}
+                    className='w-full flex items-center justify-center gap-2 bg-slate-900 py-4 text-center hover:text-slate-100 text-sm font-medium text-slate-300 outline-none'>
+                  <div className='size-3 rounded-full bg-red-500 animate-pulse'/>  Gravando! (Clique para interromper)
+                  </button>
+                  :
+                  <button
+                    onClick={handleSaveNote}
+                    type="button"
+                    className='w-full bg-lime-400 py-4 text-center hover:bg-lime-500 text-sm font-medium text-lime-950 outline-none'>
+                    Salvar nota
+                  </button>
+                }
               </form>
             </Dialog.Content>
           </Dialog.Portal>
 
         </Dialog.Root>
-        <NoteCard note={note} />
+
+        {filteredNotes.map(note => {
+          return <NoteCard note={note} key={note.id} />
+        })}
       </div>
     </div>
   )
